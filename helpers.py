@@ -863,9 +863,9 @@ def neighbor_match_test(
     results_df.loc[results_df["Probability"] == -1, "Probability"] = np.nan
     results_df = pd.merge(df, results_df, left_index=True, right_index=True)
     # Create a custom color array based on significance
-    results_df["alpha"] = 1  # default alpha
+    results_df["alpha"] = 1.0  # default alpha
     results_df.loc[results_df["Probability"] > 0.05, "alpha"] = (
-        0.3  # lower alpha for non-significant areas
+        0.5  # lower alpha for non-significant areas
     )
     # Plot with variable transparency
     # Create the plot with alpha for individual geometries
@@ -880,6 +880,14 @@ def neighbor_match_test(
         .values,  # use the alpha column for transparency
         legend=False,  # Don't create legend yet
     )
+
+    # Remove x and y axis labels and ticks
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_xlabel("")
+    ax.set_ylabel("")
 
     # Create legend handles and labels manually
     import matplotlib.patches as mpatches
@@ -906,10 +914,9 @@ def neighbor_match_test(
         title="Number of Common Neighbors",
     )
 
-    ax.set_title(f"{df.drop(columns=[geometry_col]).columns.to_list()}")
-    return results_df
-
-    ax.set_title(f"{df.drop(columns=[geometry_col]).columns.to_list()}")
+    ax.set_title(
+        f"Spatial Overlap of Geographic & NDim Space \n{df.drop(columns=[geometry_col]).columns.to_list()}"
+    )
     return results_df
 
 
