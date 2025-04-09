@@ -16,6 +16,7 @@ from geopy.distance import great_circle
 from concurrent.futures import ThreadPoolExecutor
 from esda.moran import Moran, Moran_BV, Moran_Local, Moran_Local_BV
 
+
 # %%
 
 
@@ -74,20 +75,22 @@ def calculate_moran_i_report(data, variable, weights, alpha=0.05):
     return mi
 
 
-def plot_moran_scatter(x, weights, data, title=None, quad_labels=None):
+def plot_moran_scatter(df, x_name, y_name=None, w=None, title=None):
     """
     Create a Moran scatterplot of normalized data with labels in each quadrant.
 
     Parameters:
     -----------
-    x : str
-        Column name for moran's plot values
-    data : DataFrame
-        DataFrame containing the data
+    df : GeoDataFrame
+        GeoDataFrame containing the data
+    x_name : str
+        Column name for Moran's plot values
+    y_name : str, optional
+        If not None, triggers Moran_Local_BV
+    w : libpysal.weights
+        The spatial weights matrix
     title : str, optional
         Plot title
-    quad_labels : dict, optional
-        Dictionary of labels for quadrants {'HH','HL','LH','LL'}
 
     Returns:
     --------
@@ -97,81 +100,36 @@ def plot_moran_scatter(x, weights, data, title=None, quad_labels=None):
     Example:
     --------
     plot_moran_scatter(
-        x="loan_income_ratio_GSE",
-        weights=w,
-        data=common_loans,
+        df=common_loans,
+        x_name="loan_income_ratio_GSE",
+        w=w,
         title="GSE loans"
     )
     """
-    # normalize data
-    data[x] = data[x] - data[x].mean()
-    y = "w_" + x
-    data[y] = libpysal.weights.lag_spatial(weights, data[x])
-    data[y] = data[y] - data[y].mean()
 
-    # Set default quadrant labels if not provided
-    if quad_labels is None:
-        quad_labels = {"HH": "HH", "HL": "HL", "LH": "LH", "LL": "LL"}
+    if y_name is None:
+        # Calculate Moran's I
+        moran = Moran_Local(df[x_name], w)
+    else:
+        # Calculate Bivariate Moran's I
+        moran = Moran_Local_BV(df[y_name], df[x_name], w)
 
-    # Set up the figure and axis
-    f, ax = plt.subplots(1, figsize=(6, 6))
-    # Plot values
-    seaborn.regplot(
-        x=x,
-        y=y,
-        data=data,
-        ci=None,
-        ax=ax,
-        scatter_kws={"alpha": 0.1},
-        line_kws={"color": "black"},
-        # lowess=True,
+    # Use moran_scatterplot_mm for enhanced visualization
+    fig, ax = moran_scatterplot(
+        moran=moran,
+        p=0.05,  # Statistical significance threshold
+        zstandard=True,
+        aspect_equal=True,
     )
-    # Add 45-degree line (red dashed)
-    x_min, x_max = ax.get_xlim()
-    y_min, y_max = ax.get_ylim()
 
-    # Calculate the overlapping range for the 45-degree line
-    line_min = max(x_min, y_min)
-    line_max = min(x_max, y_max)
+    # Set title if provided
+    if title:
+        ax.set_title(title)
 
-    # Plot the 45-degree line within the current axis limits
-    ax.plot(
-        [line_min, line_max],
-        [line_min, line_max],
-        "r--",
-        alpha=0.7,
-        lw=1.5,
-        label="45° line",
-    )
-    ax.legend(loc="best", frameon=True, framealpha=0.7)
+    fig.tight_layout()
+    plt.show()
 
-    # Keep the original axis limits
-    ax.set_xlim(x_min, x_max)
-    ax.set_ylim(y_min, y_max)
-
-    # Add vertical and horizontal lines
-    ax.axvline(0, c="k", alpha=0.5)
-    ax.axhline(0, c="k", alpha=0.5)
-
-    # Get x and y ranges to position labels properly
-    x_range = data[x].max() - data[x].min()
-    y_range = data[y].max() - data[y].min()
-
-    # Calculate positions (small offset from origin in each quadrant)
-    x_offset = x_range * 0.2
-    y_offset = y_range * 0.2
-
-    # Add text labels for each quadrant
-    ax.text(x_offset, y_offset, quad_labels["HH"], fontsize=25, c="r")  # HH (top right)
-    ax.text(
-        x_offset, -y_offset, quad_labels["HL"], fontsize=25, c="r"
-    )  # HL (bottom right)
-    ax.text(-x_offset, y_offset, quad_labels["LH"], fontsize=25, c="r")  # LH (top left)
-    ax.text(
-        -x_offset, -y_offset, quad_labels["LL"], fontsize=25, c="r"
-    )  # LL (bottom left)
-
-    # print interpretation of quadrant labels
+    # Print interpretation of quadrant labels
     print(
         f"Interpretation of Quadrant Labels:\n"
         f"HH: High-High (positive correlation)\n"
@@ -182,11 +140,11 @@ def plot_moran_scatter(x, weights, data, title=None, quad_labels=None):
         f"Where values are in XY order - so HL would be high in x-axis, low in y-axis\n"
         f"-------------------------------------------------------"
     )
-    # Set title if provided
-    if title:
-        ax.set_title(title)
 
     return ax
+
+
+# %%
 
 
 def calculate_moran_local_bv(gdf, x_name, y_name, w, significance_level=0.05):
