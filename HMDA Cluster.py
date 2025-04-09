@@ -18,6 +18,7 @@ from helpers import (
     calculate_moran_i_report,
     # interactive_moran_map,
     neighbor_match_test,
+    calculate_moran_local_bv,
 )
 
 
@@ -213,7 +214,7 @@ plot_moran_scatter(
 )
 
 # %%
-from splot.esda import plot_local_autocorrelation
+from splot.esda import plot_local_autocorrelation, moran_scatterplot
 from esda.moran import Moran_Local
 
 plot_local_autocorrelation(
@@ -221,12 +222,49 @@ plot_local_autocorrelation(
     gdf=common_loans,
     attribute="loan_income_ratio_GSE",
 )
+# %%
+moran_scatterplot(Moran_Local(common_loans["loan_income_ratio_GSE"].values, w), p=0.05)
 
+# %%
+from esda.moran import Moran, Moran_BV, Moran_Local, Moran_Local_BV
 
+moran_scatterplot(
+    Moran_Local_BV(
+        common_loans["loan_income_ratio_GSE"].values,
+        common_loans["loan_income_ratio_not_sold"].values,
+        w,
+    ),
+    p=0.05,
+)
+
+# %% interactive local morans bivariate
+
+quadrant_GSEvNotSold = calculate_moran_local_bv(
+    gdf=common_loans,
+    x_name="loan_income_ratio_GSE",
+    y_name="loan_income_ratio_not_sold",
+    w=w,
+)
+
+# %%
+quadrant_GSEvNotSold.explore(
+    color=quadrant_GSEvNotSold["quadrant_label"].map(
+        {"HH": "red", "LL": "blue", "HL": "orange", "LH": "lightblue"}
+    )
+)
+# %%
 # %% Lisa PLots - single variable
 plot_lisa_analysis(
     df=common_loans,
     x_name="loan_income_ratio_GSE",
+    w=w,
+    title_prefix="loan_income_ratio_GSE",
+    legend_kwds={"fmt": "{:.4f}"},
+)
+# %%
+plot_lisa_analysis(
+    df=common_loans,
+    x_name="loan_income_ratio_not_sold",
     w=w,
     title_prefix="",
     legend_kwds={"fmt": "{:.4f}"},
@@ -240,7 +278,7 @@ plot_lisa_analysis(
     x_name="loan_income_ratio_GSE",
     y_name="loan_income_ratio_not_sold",
     w=w,
-    title_prefix="",
+    title_prefix="GSE/nosold",
     legend_kwds={"fmt": "{:.4f}"},
 )
 

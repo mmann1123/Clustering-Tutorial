@@ -1,12 +1,20 @@
+# %%
 import pandas as pd
 import libpysal
 import seaborn
-
 from splot import esda as esdaplot
 import esda
 import matplotlib.pyplot as plt
 import pandas as pd
-
+from splot.esda import moran_scatterplot
+import numpy as np
+from sklearn.preprocessing import StandardScaler, RobustScaler, MinMaxScaler
+from scipy.spatial import distance_matrix
+from scipy.special import comb
+from geopandas import GeoDataFrame
+from geopy.distance import great_circle
+from concurrent.futures import ThreadPoolExecutor
+from esda.moran import Moran, Moran_BV, Moran_Local, Moran_Local_BV
 
 # %%
 
@@ -170,6 +178,53 @@ def plot_moran_scatter(x, weights, data, title=None, quad_labels=None):
     return ax
 
 
+def calculate_moran_local_bv(gdf, x_name, y_name, w, significance_level=0.05):
+    """
+    Calculate Moran Local Bivariate and return a DataFrame with quadrant, significance, and translated labels.
+
+    Parameters:
+    - gdf: GeoDataFrame containing the data.
+    - x_name: Column name for the first variable.
+    - y_name: Column name for the second variable.
+    - w: Spatial weights matrix.
+    - significance_level: Significance threshold for p-values (default is 0.05).
+
+    Returns:
+    - GeoDataFrame with additional columns: 'quadrant', 'significance', and 'quadrant_label'.
+    """
+    bv = Moran_Local_BV(
+        gdf[x_name].values,
+        gdf[y_name].values,
+        w,
+        geoda_quads=True,
+    )
+    gdf["quadrant"] = bv.q
+    gdf["significance"] = bv.p_sim
+    gdf["quadrant_label"] = gdf.apply(
+        lambda row: (
+            "HH"
+            if row["significance"] <= significance_level and row["quadrant"] == 1
+            else (
+                "LH"
+                if row["significance"] <= significance_level and row["quadrant"] == 2
+                else (
+                    "LL"
+                    if row["significance"] <= significance_level
+                    and row["quadrant"] == 3
+                    else (
+                        "HL"
+                        if row["significance"] <= significance_level
+                        and row["quadrant"] == 4
+                        else "NS"
+                    )
+                )
+            )
+        ),
+        axis=1,
+    )
+    return gdf
+
+
 def plot_lisa_analysis(
     df,
     x_name,
@@ -245,6 +300,15 @@ def plot_lisa_analysis(
             ax=ax,
         )
 
+    def _moran_global_scatterplot(df, lisa, axs, axis=1):
+        ax = axs[axis]
+        moran_scatterplot(lisa, p=0.05, ax=ax)
+        # Get the current axis
+        ax = plt.gca()
+        # Set the x-axis and y-axis labels for moran's scatter
+        ax.set_xlabel("Variable (standardized)", fontsize=12)
+        ax.set_ylabel("Spatial Lag of Variable (standardized)", fontsize=12)
+
     def _quadrant_cat_plot(df, lisa, axs, axis=1):
         # Subplot 2 - Quadrant categories
         ax = axs[axis]
@@ -305,11 +369,13 @@ def plot_lisa_analysis(
     axs = axs.flatten()
 
     if y_name is None:
+        f.suptitle(f"{title_prefix} Moran's I LISA Analysis", fontsize=16, y=0.95)
+
         # Calculate local Moran's I
         lisa = esda.moran.Moran_Local(df[x_name], w)
 
         _local_variable_plot(df, x_name, axs, legend_kwds=legend_kwds, axis=0)
-        _quadrant_cat_plot(df, lisa, axs, axis=1)
+        _moran_global_scatterplot(df, lisa, axs, axis=1)
         _significance_map(df, lisa, axs, axis=2)
         _cluster_map(df, lisa, axs, axis=3)
 
@@ -330,21 +396,28 @@ def plot_lisa_analysis(
             f"   - High-Low (HL): High values surrounded by low values\n"
             f"   - Low-High (LH): Low values surrounded by high values\n"
             f"   - Low-Low (LL): Low values surrounded by low values\n"
-            f"3. Significance Map: Shows which locations have statistically significant\n"
-            f"   local spatial autocorrelation (p < 0.05).\n"
+            f"3. Scatter Plot: Shows quadrants and statistical significance\n"
             f"4. Cluster Map: Combines quadrant types with statistical significance,\n"
             f"   highlighting only the statistically significant spatial clusters.\n"
             f"-------------------------------------------------------"
         )
+        for i, ax in enumerate(axs.flatten()):
+            if i != 1:
+                ax.set_axis_off()
+            ax.set_title(titles[i], y=0)
 
         # Print the interpretation
 
     else:
+        f.suptitle(
+            f"{title_prefix} Moran's I Bivariate LISA Analysis", fontsize=16, y=0.95
+        )
+
         lisa = esda.moran.Moran_Local_BV(df[x_name], df[y_name], w)
 
         _local_variable_plot(df, x_name, axs, legend_kwds=legend_kwds, axis=0)
         _local_variable_plot(df, y_name, axs, legend_kwds=legend_kwds, axis=1)
-        _significance_map(df, lisa, axs, axis=2)
+        _moran_global_scatterplot(df, lisa, axs, axis=2)
         _cluster_map(df, lisa, axs, axis=3)
 
         titles = [
@@ -358,7 +431,7 @@ def plot_lisa_analysis(
             f"\nBivariate Moran's LISA Analysis interpretation:\n"
             f"1. {x_name} Values Map: Shows the spatial distribution of first variable.\n"
             f"2. {y_name} Values Map: Shows the spatial distribution of second variable.\n"
-            f"3. Significance Map: Shows which locations have statistically significant\n"
+            f"3. Scatter Plot: Shows quadrants and statistical significance\n"
             f"   bivariate spatial relationships (p < 0.05).\n"
             f"4. Cluster Map: Shows significant spatial clusters with the following patterns:\n"
             f"   - High-High (HH): High {x_name} values surrounded by high {y_name} values\n"
@@ -367,9 +440,10 @@ def plot_lisa_analysis(
             f"   - Low-Low (LL): Low {x_name} values surrounded by low {y_name} values\n"
             f"-------------------------------------------------------"
         )
-    for i, ax in enumerate(axs.flatten()):
-        ax.set_axis_off()
-        ax.set_title(titles[i], y=0)
+        for i, ax in enumerate(axs.flatten()):
+            if i != 2:
+                ax.set_axis_off()
+            ax.set_title(titles[i], y=0)
 
     f.tight_layout()
     plt.show()
@@ -379,6 +453,7 @@ def plot_lisa_analysis(
     return lisa
 
 
+# %%
 # Add this to your script
 import folium
 import json
@@ -715,15 +790,6 @@ def neighbor_match_test(
 
 
 # %%
-import numpy as np
-import pandas as pd
-from sklearn.preprocessing import StandardScaler, RobustScaler, MinMaxScaler
-from scipy.spatial import distance_matrix
-from scipy.special import comb
-from shapely.geometry import Point
-from geopandas import GeoDataFrame
-from geopy.distance import great_circle
-from concurrent.futures import ThreadPoolExecutor
 
 
 def scale_data(data, method):
