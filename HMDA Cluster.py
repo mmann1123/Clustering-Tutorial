@@ -5,12 +5,10 @@
 # %%
 # %%
 import geopandas as gpd
-import census
 import us
 import pandas as pd
 import libpysal
 
-import splot
 import pandas as pd
 from helpers import (
     plot_lisa_analysis,
@@ -249,8 +247,16 @@ quadrant_GSEvNotSold = calculate_moran_local_bv(
 # %%
 quadrant_GSEvNotSold.explore(
     color=quadrant_GSEvNotSold["quadrant_label"].map(
-        {"HH": "red", "LL": "blue", "HL": "orange", "LH": "lightblue"}
-    )
+        {
+            "HH": "red",
+            "LL": "blue",
+            "HL": "orange",
+            "LH": "lightblue",
+            "NS": "lightgrey",
+        }
+    ),
+    tooltip=False,
+    popup=True,
 )
 # %%
 # %% Lisa PLots - single variable

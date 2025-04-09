@@ -171,6 +171,17 @@ def plot_moran_scatter(x, weights, data, title=None, quad_labels=None):
         -x_offset, -y_offset, quad_labels["LL"], fontsize=25, c="r"
     )  # LL (bottom left)
 
+    # print interpretation of quadrant labels
+    print(
+        f"Interpretation of Quadrant Labels:\n"
+        f"HH: High-High (positive correlation)\n"
+        f"HL: High-Low (negative correlation)\n"
+        f"LH: Low-High (negative correlation)\n"
+        f"LL: Low-Low (positive correlation)\n"
+        f"-------------------------------------------------------\n"
+        f"Where values are in XY order - so HL would be high in x-axis, low in y-axis\n"
+        f"-------------------------------------------------------"
+    )
     # Set title if provided
     if title:
         ax.set_title(title)
