@@ -9,13 +9,8 @@ import census
 import us
 import pandas as pd
 import libpysal
-import numpy as np
-import seaborn
 
 import splot
-from splot import esda as esdaplot
-import esda
-import matplotlib.pyplot as plt
 import pandas as pd
 from helpers import (
     plot_lisa_analysis,
@@ -55,6 +50,9 @@ hmda = pd.read_csv(
     engine="pyarrow",
 )
 hmda.head()
+
+# limit to approved or purchased loans
+hmda = hmda[(hmda["action_taken"] == 1) | (hmda["action_taken"] == 6)]
 # %% get loans by type
 
 loans = (
@@ -130,8 +128,6 @@ ax = cnt_notsold_loans.plot("loan_income_ratio", cmap="coolwarm", legend=True)
 ax.set_title("Loan-to-Income Ratio for Not Sold Loans")
 
 # %%
-
-# Calculate Multivariate Local Geary for loan_income_ratio comparison
 import matplotlib.pyplot as plt
 from esda import Geary_Local_MV
 from esda.geary import Geary
@@ -217,31 +213,17 @@ plot_moran_scatter(
 )
 
 # %%
-test = neighbor_match_test(
-    df=common_loans[
-        [
-            "total_loan_amount_GSE",
-            "avg_loan_amount_GSE",
-            "fam_income_med_GSE",
-            "geometry",
-        ]
-    ],
-    k=10,
-    scale_method="standardize",
+from splot.esda import plot_local_autocorrelation
+from esda.moran import Moran_Local
+
+plot_local_autocorrelation(
+    moran_loc=Moran_Local(common_loans["loan_income_ratio_GSE"].values, w),
+    gdf=common_loans,
+    attribute="loan_income_ratio_GSE",
 )
 
 
-# %%def interactive_moran_map(data, x, weights, basemap=None):
-
-# folium_map = create_folium_moran_map(
-#     data=common_loans,
-#     x="loan_income_ratio_not_sold",
-#     weights=w,
-#     output_path="folium_loan_ratio_map.html",
-# )
-# %% Lisa PLots
-
-
+# %% Lisa PLots - single variable
 plot_lisa_analysis(
     df=common_loans,
     x_name="loan_income_ratio_GSE",
@@ -249,8 +231,9 @@ plot_lisa_analysis(
     title_prefix="",
     legend_kwds={"fmt": "{:.4f}"},
 )
-# %%
 
+
+# %% Lisa Plot - multivariable
 
 plot_lisa_analysis(
     df=common_loans,
@@ -261,4 +244,28 @@ plot_lisa_analysis(
     legend_kwds={"fmt": "{:.4f}"},
 )
 
+
+# %% Neighborhood match test
+test = neighbor_match_test(
+    df=common_loans[
+        [
+            "total_loan_amount_GSE",
+            "avg_loan_amount_GSE",
+            "fam_income_med_GSE",
+            "geometry",
+        ]
+    ],
+    k=8,
+    scale_method="standardize",
+)
+
+
 # %%
+# %%def interactive_moran_map(data, x, weights, basemap=None):
+
+# folium_map = create_folium_moran_map(
+#     data=common_loans,
+#     x="loan_income_ratio_not_sold",
+#     weights=w,
+#     output_path="folium_loan_ratio_map.html",
+# )
