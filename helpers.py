@@ -144,6 +144,57 @@ def plot_moran_scatter(df, x_name, y_name=None, w=None, title=None):
     return ax
 
 
+# %%
+
+
+def calculate_moran_local(gdf, x_name, w, significance_level=0.05):
+    """
+    Calculate Moran Local (univariate) and return a DataFrame with quadrant, significance, and translated labels.
+
+    Parameters:
+    - gdf: GeoDataFrame containing the data.
+    - x_name: Column name for the variable.
+    - w: Spatial weights matrix.
+    - significance_level: Significance threshold for p-values (default is 0.05).
+
+    Returns:
+    - GeoDataFrame with additional columns: 'quadrant', 'significance', and 'quadrant_label'.
+    """
+    # Calculate Moran's Local
+    local = Moran_Local(
+        gdf[x_name].values,
+        w,
+        geoda_quads=True,
+    )
+    # Add quadrant and significance columns
+    gdf["quadrant"] = local.q
+    gdf["significance"] = local.p_sim
+    # Add translated quadrant labels
+    gdf["quadrant_label"] = gdf.apply(
+        lambda row: (
+            "HH"
+            if row["significance"] <= significance_level and row["quadrant"] == 1
+            else (
+                "LH"
+                if row["significance"] <= significance_level and row["quadrant"] == 2
+                else (
+                    "LL"
+                    if row["significance"] <= significance_level
+                    and row["quadrant"] == 3
+                    else (
+                        "HL"
+                        if row["significance"] <= significance_level
+                        and row["quadrant"] == 4
+                        else "NS"
+                    )
+                )
+            )
+        ),
+        axis=1,
+    )
+    return gdf
+
+
 def calculate_moran_local_bv(gdf, x_name, y_name, w, significance_level=0.05):
     """
     Calculate Moran Local Bivariate and return a DataFrame with quadrant, significance, and translated labels.
