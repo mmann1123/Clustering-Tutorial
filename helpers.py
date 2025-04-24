@@ -144,9 +144,6 @@ def plot_moran_scatter(df, x_name, y_name=None, w=None, title=None):
     return ax
 
 
-# %%
-
-
 def calculate_moran_local_bv(gdf, x_name, y_name, w, significance_level=0.05):
     """
     Calculate Moran Local Bivariate and return a DataFrame with quadrant, significance, and translated labels.
@@ -160,6 +157,8 @@ def calculate_moran_local_bv(gdf, x_name, y_name, w, significance_level=0.05):
 
     Returns:
     - GeoDataFrame with additional columns: 'quadrant', 'significance', and 'quadrant_label'.
+
+
     """
     bv = Moran_Local_BV(
         gdf[x_name].values,
@@ -422,276 +421,66 @@ def plot_lisa_analysis(
     return lisa
 
 
-# %%
-# Add this to your script
-import folium
-import json
-import numpy as np
-import io
-import base64
-from matplotlib import pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap
-
-# Add this to your script
-import folium
-import json
-import numpy as np
-import io
-import base64
-from matplotlib import pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap
-from IPython.display import display
+import geopandas as gpd
+from esda.moran import Moran_Local_BV
 
 
-def create_folium_moran_map(data, x, weights, output_path="folium_moran_map.html"):
+def map_local_morans(
+    gdf, x_name, y_name=None, w=None, color_mapping=None, basemap=None, **map_kwargs
+):
     """
-    Create a Folium-based interactive Moran map with embedded scatter plot
+    Runs Local Moran's I Bivariate analysis and visualizes the results using explore.
 
     Parameters:
-    -----------
-    data : GeoDataFrame
-        Spatial data containing geometries and values
-    x : str
-        Column name for the variable to analyze
-    weights : libpysal.weights
-        Spatial weights matrix
-    output_path : str, optional
-        Path to save the HTML file
+        gdf (GeoDataFrame): The GeoDataFrame containing the data.
+        x_name (str): The name of the first variable for Moran's I analysis.
+        y_name (str): The name of the second variable for Moran's I analysis.
+        w (libpysal.weights): The spatial weights matrix.
+        color_mapping (dict, optional): A dictionary mapping quadrant labels to colors.
+        basemap (str, optional): A basemap to use in the visualization.
+        **map_kwargs: Additional keyword arguments for the `explore` function.
 
     Returns:
-    --------
-    m : folium.Map
-        The created folium map
+        folium.Map: An interactive map visualizing the Local Moran's I results.
     """
-    import folium
-    from matplotlib.colors import LinearSegmentedColormap
-    import matplotlib.pyplot as plt
-    import io
-    import base64
-    import numpy as np
-    import pandas as pd
-    import esda
-
-    # Create a deep copy to avoid modifying the original data
-    df = data.copy()
-
-    # Handle missing values before standardization
-    df = df.dropna(subset=[x])
-
-    # Compute spatially lagged variable
-    df[x + "_std"] = df[x] - df[x].mean()
-    y = "w_" + x
-    df[y] = libpysal.weights.lag_spatial(weights, df[x + "_std"])
-    df[y] = df[y] - df[y].mean()
-
-    # Compute quadrants for LISA map
-    df["quadrant"] = "NA"
-    df.loc[(df[x + "_std"] > 0) & (df[y] > 0), "quadrant"] = "HH"
-    df.loc[(df[x + "_std"] > 0) & (df[y] < 0), "quadrant"] = "HL"
-    df.loc[(df[x + "_std"] < 0) & (df[y] > 0), "quadrant"] = "LH"
-    df.loc[(df[x + "_std"] < 0) & (df[y] < 0), "quadrant"] = "LL"
-
-    # Use original values for coloring
-    df["value"] = df[x]
-    vmin, vmax = df["value"].min(), df["value"].max()
-
-    # Convert to WGS84 for web mapping if needed
-    if df.crs and df.crs != "EPSG:4326":
-        df = df.to_crs("EPSG:4326")
-
-    # Create color map
-    colormap = LinearSegmentedColormap.from_list("RdBu_r", ["blue", "white", "red"])
-
-    # Create Folium map centered on the US
-    m = folium.Map(location=[39.8, -98.5], zoom_start=4, tiles="CartoDB positron")
-
-    # Create a Moran scatter plot to embed
-    def create_moran_plot():
-        fig, ax = plt.subplots(figsize=(4, 4), dpi=100)
-        colors = {
+    # Default color mapping if none is provided
+    if color_mapping is None:
+        color_mapping = {
             "HH": "red",
-            "LL": "blue",
-            "HL": "lightcoral",
+            "HL": "orange",
             "LH": "lightblue",
-            "NA": "gray",
+            "LL": "blue",
+            "NS": "lightgrey",
         }
 
-        # Plot each quadrant separately
-        for quad in ["HH", "HL", "LH", "LL"]:
-            subset = df[df["quadrant"] == quad]
-            if not subset.empty:
-                ax.scatter(
-                    subset[x + "_std"],
-                    subset[y],
-                    c=colors[quad],
-                    alpha=0.7,
-                    label=quad,
-                    edgecolor="k",
-                    s=30,
-                )
+    # Calculate Local Moran's I Bivariate
+    if y_name is None:
+        moran = calculate_moran_local(gdf=gdf, x_name=x_name, w=w)
+    else:
+        moran = calculate_moran_local_bv(
+            gdf=gdf,
+            x_name=x_name,
+            y_name=y_name,
+            w=w,
+        )
 
-        # Add reference lines
-        ax.axhline(y=0, color="gray", linestyle="--", alpha=0.5)
-        ax.axvline(x=0, color="gray", linestyle="--", alpha=0.5)
+    # Map colors to the quadrant labels
+    gdf["color"] = gdf["quadrant_label"].map(color_mapping)
 
-        # Add 45-degree line
-        min_val = min(df[x + "_std"].min(), df[y].min())
-        max_val = max(df[x + "_std"].max(), df[y].max())
-        ax.plot([min_val, max_val], [min_val, max_val], "r--", alpha=0.5)
-
-        ax.set_xlabel(f"{x} (standardized)")
-        ax.set_ylabel(f"Spatial lag of {x} (standardized)")
-        ax.set_title("Moran's I Scatter Plot")
-        ax.legend(title="Quadrants")
-
-        plt.tight_layout()
-
-        # Convert plot to image
-        img = io.BytesIO()
-        plt.savefig(img, format="png", bbox_inches="tight")
-        plt.close()
-        img.seek(0)
-        return base64.b64encode(img.getvalue()).decode("utf-8")
-
-    # Calculate Moran's I
-    moran = esda.Moran(df[x + "_std"], weights)
-    moran_html = f"""
-    <div style='padding: 10px; background-color: white; border-radius: 5px; box-shadow: 0 0 5px rgba(0,0,0,0.2);'>
-        <h4>Global Moran's I Statistics</h4>
-        <p>I: {moran.I:.4f}</p>
-        <p>p-value: {moran.p_sim:.4f}</p>
-        <hr/>
-        <h4>Moran Scatter Plot</h4>
-        <img src="data:image/png;base64,{create_moran_plot()}" width="300px">
-    </div>
-    """
-
-    # Add the Moran information as a control
-    moran_control = folium.Element(moran_html)
-    m.get_root().html.add_child(moran_control)
-
-    # Define style function with proper error handling
-    def style_function(feature):
-        try:
-            # Get value from GeoJSON properties
-            if "properties" in feature and "value" in feature["properties"]:
-                value = feature["properties"]["value"]
-            else:
-                # Default color if value not found
-                return {
-                    "fillColor": "#808080",
-                    "color": "gray",
-                    "weight": 0.5,
-                    "fillOpacity": 0.5,
-                }
-
-            # Check for NaN or invalid values
-            if value is None or pd.isna(value):
-                return {
-                    "fillColor": "#808080",
-                    "color": "gray",
-                    "weight": 0.5,
-                    "fillOpacity": 0.5,
-                }
-
-            # Normalize the value
-            norm_value = (value - vmin) / (vmax - vmin) if vmax > vmin else 0.5
-            norm_value = max(0, min(1, norm_value))  # Ensure it's between 0 and 1
-
-            # Get RGB color from colormap
-            color = colormap(norm_value)
-
-            # Safely convert to hex
-            r = max(0, min(255, int(color[0] * 255)))
-            g = max(0, min(255, int(color[1] * 255)))
-            b = max(0, min(255, int(color[2] * 255)))
-
-            color_hex = f"#{r:02x}{g:02x}{b:02x}"
-
-            return {
-                "fillColor": color_hex,
-                "color": "gray",
-                "weight": 0.5,
-                "fillOpacity": 0.7,
-            }
-        except Exception as e:
-            print(f"Error in style_function: {e}")
-            # Return a default gray color if anything goes wrong
-            return {
-                "fillColor": "#808080",
-                "color": "gray",
-                "weight": 0.5,
-                "fillOpacity": 0.5,
-            }
-
-    # Create a hover function
-    def highlight_function(feature):
-        return {"weight": 2, "color": "black", "fillOpacity": 0.9}
-
-    # Add the GeoJSON layer with error handling
-    try:
-        # Convert the GeoDataFrame to a GeoJSON-like dictionary
-        geo_data = df.__geo_interface__
-
-        # Create tooltip fields that we're sure exist in the data
-        tooltip_fields = ["COUNTYFP", "value", "quadrant"]
-        tooltip_aliases = ["County:", f"{x}:", "Quadrant:"]
-
-        # Add spatial lag if available
-        if y in df.columns:
-            tooltip_fields.append(y)
-            tooltip_aliases.append("Spatial Lag:")
-
-        # Add the GeoJSON to the map
-        folium.GeoJson(
-            data=geo_data,
-            style_function=style_function,
-            highlight_function=highlight_function,
-            tooltip=folium.GeoJsonTooltip(
-                fields=tooltip_fields,
-                aliases=tooltip_aliases,
-                style="background-color: white; color: #333333; font-family: arial; font-size: 12px; padding: 10px;",
-            ),
-        ).add_to(m)
-    except Exception as e:
-        print(f"Error adding GeoJSON layer: {e}")
-        # Add a simple marker to show the map still works
-        folium.Marker(
-            [39.8, -98.5],
-            popup="Error loading geospatial data. See console for details.",
-        ).add_to(m)
-
-    # Add a legend
-    colormap_folium = folium.LinearColormap(
-        colors=["blue", "white", "red"],
-        vmin=vmin,
-        vmax=vmax,
-        caption=f"{x}",
+    # Visualize using explore
+    return gdf.explore(
+        column="quadrant_label",
+        cmap=list(color_mapping.values()),  # Ensure the colors match the legend order
+        tooltip=False,
+        popup=True,
+        legend=True,  # Enable legend
+        legend_kwds={"colorbar": False, "caption": "Quadrant"},
+        basemap=basemap,
+        **map_kwargs,
     )
-    m.add_child(colormap_folium)
 
-    # Save to HTML file
-    try:
-        # Display the map in a notebook if we're in a notebook environment
-        display(m)
 
-        # Save to HTML file
-        m.save(output_path)
-        print(f"Interactive map saved to {output_path}")
-        m.save(output_path)
-        print(f"Interactive map saved to {output_path}")
-    except Exception as e:
-        print(f"Error saving map: {e}")
-        # Try saving with a different name as fallback
-        fallback_path = "folium_map_fallback.html"
-        try:
-            m.save(fallback_path)
-            print(f"Map saved to fallback location: {fallback_path}")
-        except:
-            print("Could not save map to HTML file")
-
-    return m
-
+# %%
 
 import numpy as np
 import pandas as pd
@@ -956,3 +745,274 @@ def neighbor_match_test(
 
 
 # %%
+
+
+# # %%
+# # Add this to your script
+# import folium
+# import json
+# import numpy as np
+# import io
+# import base64
+# from matplotlib import pyplot as plt
+# from matplotlib.colors import LinearSegmentedColormap
+
+# # Add this to your script
+# import folium
+# import json
+# import numpy as np
+# import io
+# import base64
+# from matplotlib import pyplot as plt
+# from matplotlib.colors import LinearSegmentedColormap
+# from IPython.display import display
+
+
+# def create_folium_moran_map(data, x, weights, output_path="folium_moran_map.html"):
+#     """
+#     Create a Folium-based interactive Moran map with embedded scatter plot
+
+#     Parameters:
+#     -----------
+#     data : GeoDataFrame
+#         Spatial data containing geometries and values
+#     x : str
+#         Column name for the variable to analyze
+#     weights : libpysal.weights
+#         Spatial weights matrix
+#     output_path : str, optional
+#         Path to save the HTML file
+
+#     Returns:
+#     --------
+#     m : folium.Map
+#         The created folium map
+#     """
+#     import folium
+#     from matplotlib.colors import LinearSegmentedColormap
+#     import matplotlib.pyplot as plt
+#     import io
+#     import base64
+#     import numpy as np
+#     import pandas as pd
+#     import esda
+
+#     # Create a deep copy to avoid modifying the original data
+#     df = data.copy()
+
+#     # Handle missing values before standardization
+#     df = df.dropna(subset=[x])
+
+#     # Compute spatially lagged variable
+#     df[x + "_std"] = df[x] - df[x].mean()
+#     y = "w_" + x
+#     df[y] = libpysal.weights.lag_spatial(weights, df[x + "_std"])
+#     df[y] = df[y] - df[y].mean()
+
+#     # Compute quadrants for LISA map
+#     df["quadrant"] = "NA"
+#     df.loc[(df[x + "_std"] > 0) & (df[y] > 0), "quadrant"] = "HH"
+#     df.loc[(df[x + "_std"] > 0) & (df[y] < 0), "quadrant"] = "HL"
+#     df.loc[(df[x + "_std"] < 0) & (df[y] > 0), "quadrant"] = "LH"
+#     df.loc[(df[x + "_std"] < 0) & (df[y] < 0), "quadrant"] = "LL"
+
+#     # Use original values for coloring
+#     df["value"] = df[x]
+#     vmin, vmax = df["value"].min(), df["value"].max()
+
+#     # Convert to WGS84 for web mapping if needed
+#     if df.crs and df.crs != "EPSG:4326":
+#         df = df.to_crs("EPSG:4326")
+
+#     # Create color map
+#     colormap = LinearSegmentedColormap.from_list("RdBu_r", ["blue", "white", "red"])
+
+#     # Create Folium map centered on the US
+#     m = folium.Map(location=[39.8, -98.5], zoom_start=4, tiles="CartoDB positron")
+
+#     # Create a Moran scatter plot to embed
+#     def create_moran_plot():
+#         fig, ax = plt.subplots(figsize=(4, 4), dpi=100)
+#         colors = {
+#             "HH": "red",
+#             "LL": "blue",
+#             "HL": "lightcoral",
+#             "LH": "lightblue",
+#             "NA": "gray",
+#         }
+
+#         # Plot each quadrant separately
+#         for quad in ["HH", "HL", "LH", "LL"]:
+#             subset = df[df["quadrant"] == quad]
+#             if not subset.empty:
+#                 ax.scatter(
+#                     subset[x + "_std"],
+#                     subset[y],
+#                     c=colors[quad],
+#                     alpha=0.7,
+#                     label=quad,
+#                     edgecolor="k",
+#                     s=30,
+#                 )
+
+#         # Add reference lines
+#         ax.axhline(y=0, color="gray", linestyle="--", alpha=0.5)
+#         ax.axvline(x=0, color="gray", linestyle="--", alpha=0.5)
+
+#         # Add 45-degree line
+#         min_val = min(df[x + "_std"].min(), df[y].min())
+#         max_val = max(df[x + "_std"].max(), df[y].max())
+#         ax.plot([min_val, max_val], [min_val, max_val], "r--", alpha=0.5)
+
+#         ax.set_xlabel(f"{x} (standardized)")
+#         ax.set_ylabel(f"Spatial lag of {x} (standardized)")
+#         ax.set_title("Moran's I Scatter Plot")
+#         ax.legend(title="Quadrants")
+
+#         plt.tight_layout()
+
+#         # Convert plot to image
+#         img = io.BytesIO()
+#         plt.savefig(img, format="png", bbox_inches="tight")
+#         plt.close()
+#         img.seek(0)
+#         return base64.b64encode(img.getvalue()).decode("utf-8")
+
+#     # Calculate Moran's I
+#     moran = esda.Moran(df[x + "_std"], weights)
+#     moran_html = f"""
+#     <div style='padding: 10px; background-color: white; border-radius: 5px; box-shadow: 0 0 5px rgba(0,0,0,0.2);'>
+#         <h4>Global Moran's I Statistics</h4>
+#         <p>I: {moran.I:.4f}</p>
+#         <p>p-value: {moran.p_sim:.4f}</p>
+#         <hr/>
+#         <h4>Moran Scatter Plot</h4>
+#         <img src="data:image/png;base64,{create_moran_plot()}" width="300px">
+#     </div>
+#     """
+
+#     # Add the Moran information as a control
+#     moran_control = folium.Element(moran_html)
+#     m.get_root().html.add_child(moran_control)
+
+#     # Define style function with proper error handling
+#     def style_function(feature):
+#         try:
+#             # Get value from GeoJSON properties
+#             if "properties" in feature and "value" in feature["properties"]:
+#                 value = feature["properties"]["value"]
+#             else:
+#                 # Default color if value not found
+#                 return {
+#                     "fillColor": "#808080",
+#                     "color": "gray",
+#                     "weight": 0.5,
+#                     "fillOpacity": 0.5,
+#                 }
+
+#             # Check for NaN or invalid values
+#             if value is None or pd.isna(value):
+#                 return {
+#                     "fillColor": "#808080",
+#                     "color": "gray",
+#                     "weight": 0.5,
+#                     "fillOpacity": 0.5,
+#                 }
+
+#             # Normalize the value
+#             norm_value = (value - vmin) / (vmax - vmin) if vmax > vmin else 0.5
+#             norm_value = max(0, min(1, norm_value))  # Ensure it's between 0 and 1
+
+#             # Get RGB color from colormap
+#             color = colormap(norm_value)
+
+#             # Safely convert to hex
+#             r = max(0, min(255, int(color[0] * 255)))
+#             g = max(0, min(255, int(color[1] * 255)))
+#             b = max(0, min(255, int(color[2] * 255)))
+
+#             color_hex = f"#{r:02x}{g:02x}{b:02x}"
+
+#             return {
+#                 "fillColor": color_hex,
+#                 "color": "gray",
+#                 "weight": 0.5,
+#                 "fillOpacity": 0.7,
+#             }
+#         except Exception as e:
+#             print(f"Error in style_function: {e}")
+#             # Return a default gray color if anything goes wrong
+#             return {
+#                 "fillColor": "#808080",
+#                 "color": "gray",
+#                 "weight": 0.5,
+#                 "fillOpacity": 0.5,
+#             }
+
+#     # Create a hover function
+#     def highlight_function(feature):
+#         return {"weight": 2, "color": "black", "fillOpacity": 0.9}
+
+#     # Add the GeoJSON layer with error handling
+#     try:
+#         # Convert the GeoDataFrame to a GeoJSON-like dictionary
+#         geo_data = df.__geo_interface__
+
+#         # Create tooltip fields that we're sure exist in the data
+#         tooltip_fields = ["COUNTYFP", "value", "quadrant"]
+#         tooltip_aliases = ["County:", f"{x}:", "Quadrant:"]
+
+#         # Add spatial lag if available
+#         if y in df.columns:
+#             tooltip_fields.append(y)
+#             tooltip_aliases.append("Spatial Lag:")
+
+#         # Add the GeoJSON to the map
+#         folium.GeoJson(
+#             data=geo_data,
+#             style_function=style_function,
+#             highlight_function=highlight_function,
+#             tooltip=folium.GeoJsonTooltip(
+#                 fields=tooltip_fields,
+#                 aliases=tooltip_aliases,
+#                 style="background-color: white; color: #333333; font-family: arial; font-size: 12px; padding: 10px;",
+#             ),
+#         ).add_to(m)
+#     except Exception as e:
+#         print(f"Error adding GeoJSON layer: {e}")
+#         # Add a simple marker to show the map still works
+#         folium.Marker(
+#             [39.8, -98.5],
+#             popup="Error loading geospatial data. See console for details.",
+#         ).add_to(m)
+
+#     # Add a legend
+#     colormap_folium = folium.LinearColormap(
+#         colors=["blue", "white", "red"],
+#         vmin=vmin,
+#         vmax=vmax,
+#         caption=f"{x}",
+#     )
+#     m.add_child(colormap_folium)
+
+#     # Save to HTML file
+#     try:
+#         # Display the map in a notebook if we're in a notebook environment
+#         display(m)
+
+#         # Save to HTML file
+#         m.save(output_path)
+#         print(f"Interactive map saved to {output_path}")
+#         m.save(output_path)
+#         print(f"Interactive map saved to {output_path}")
+#     except Exception as e:
+#         print(f"Error saving map: {e}")
+#         # Try saving with a different name as fallback
+#         fallback_path = "folium_map_fallback.html"
+#         try:
+#             m.save(fallback_path)
+#             print(f"Map saved to fallback location: {fallback_path}")
+#         except:
+#             print("Could not save map to HTML file")
+
+#     return m
