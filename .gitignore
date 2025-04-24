@@ -12,3 +12,4 @@ hmda_2017_nationwide_first-lien-owner-occupied-1-4-family-records_labels.csv
 HMDA_record_codes.pdf
 HNDA_Head.ods
 __pycache__/helpers.cpython-313.pyc
+__pycache__/scatterplot.cpython-313.pyc
