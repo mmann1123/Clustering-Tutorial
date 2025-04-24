@@ -250,7 +250,7 @@ def plot_lisa_analysis(
     y_name=None,
     w=None,
     title_prefix="",
-    legend_kwds={"fmt": "{:.2f}"},  # Show 4 decimal places
+    legend_kwds={"fmt": "{:.4f}"},  # Show 4 decimal places
 ):
     """
     Performs Moran's I LISA analysis and creates a 4-panel visualization

@@ -61,6 +61,7 @@ table.set_fontsize(10)
 plt.tight_layout()
 # plt.show()
 # Save the figure
+!mkdir -p images
 plt.savefig("images/queen_contiguity_matrix.png", bbox_inches="tight")
 
 # %%
