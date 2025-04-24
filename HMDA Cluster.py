@@ -73,9 +73,8 @@ loans["STATEFP"] = loans["state_code"].astype(int).astype(str).str.zfill(2)
 loans["COUNTYFP"] = loans["county_code"].astype(int).astype(str).str.zfill(3)  # %%
 loans["sold"] = pd.cut(
     loans["purchaser_type"],
-    bins=[0, 1, 4, 10],
+    bins=[-0.1, 0, 4, 9],
     labels=["not_sold", "GSE", "sold_other"],
-    include_lowest=True,
 )
 loans
 # %%
@@ -204,11 +203,11 @@ mi_not_sold
 # %%  Moran's Scatter
 
 plot_moran_scatter(
-    x="loan_income_ratio_GSE", weights=w, data=common_loans, title="GSE loans"
+    x_name="loan_income_ratio_GSE", w=w, df=common_loans, title="GSE loans"
 )
-
+# %%
 plot_moran_scatter(
-    x="loan_income_ratio_not_sold", weights=w, data=common_loans, title="no_sold"
+    x_name="loan_income_ratio_not_sold", w=w, df=common_loans, title="no_sold"
 )
 
 # %%
@@ -222,6 +221,12 @@ plot_local_autocorrelation(
 )
 # %%
 moran_scatterplot(Moran_Local(common_loans["loan_income_ratio_GSE"].values, w), p=0.05)
+
+# %%
+from helpers import plot_moran_scatter
+
+plot_moran_scatter(df=common_loans, x="loan_income_ratio_GSE", w=w, title="GSE loans")
+
 
 # %%
 from esda.moran import Moran, Moran_BV, Moran_Local, Moran_Local_BV
